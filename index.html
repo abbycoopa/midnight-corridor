@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Midnight Corridor</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #000; color: #ddd; font-family: monospace; }
+    canvas { display: block; margin: 0 auto; background: #050505; }
+    #ui { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 12px; background: linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,.3)); }
+    #ui span { margin-right: 16px; }
+    #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; text-align: center; }
+    #overlay button { background: #111; color: #eee; border: 1px solid #333; padding: 10px 16px; cursor: pointer; }
+    #overlay h1 { letter-spacing: 2px; }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="800" height="480"></canvas>
+  <div id="ui">
+    <span>WASD: move</span>
+    <span>F: flashlight</span>
+    <span id="status">Find the exit.</span>
+  </div>
+  <div id="overlay">
+    <div>
+      <h1>Midnight Corridor</h1>
+      <p>You wake up in a dark hallway. Something is listening.</p>
+      <button id="start">Start</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const statusEl = document.getElementById('status');
+
+    const TILE = 32;
+    const MAP = [
+      '########################',
+      '#.............#........#',
+      '#.######.######.#.######',
+      '#.#....#........#......#',
+      '#.#.##.##########.#######',
+      '#.#.#..#...............E#',
+      '#.#.####.##########.#####',
+      '#.#......#..............#',
+      '#.#########.######.######',
+      '#...........#............#',
+      '########################'
+    ];
+
+    const player = { x: TILE*2, y: TILE*2, speed: 2.2 };
+    let flashlight = false;
+    let running = false;
+    let scareTimer = 0;
+    let monster = { x: TILE*20, y: TILE*8, active: false };
+
+    const keys = {};
+    addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    function isWall(x, y) {
+      const c = MAP[Math.floor(y/TILE)]?.[Math.floor(x/TILE)];
+      return c === '#';
+    }
+
+    function move(dx, dy) {
+      const nx = player.x + dx;
+      const ny = player.y + dy;
+      if (!isWall(nx, player.y)) player.x = nx;
+      if (!isWall(player.x, ny)) player.y = ny;
+    }
+
+    function update() {
+      if (!running) return;
+
+      let dx = 0, dy = 0;
+      if (keys['w']) dy -= player.speed;
+      if (keys['s']) dy += player.speed;
+      if (keys['a']) dx -= player.speed;
+      if (keys['d']) dx += player.speed;
+      move(dx, dy);
+
+      if (keys['f']) { flashlight = true; }
+      else flashlight = false;
+
+      // Random scare
+      if (Math.random() < 0.002 && !monster.active) {
+        monster.active = true;
+        monster.x = player.x + (Math.random() < .5 ? -1 : 1) * 120;
+        monster.y = player.y + (Math.random() < .5 ? -1 : 1) * 60;
+        scareTimer = 120;
+      }
+
+      if (monster.active) {
+        scareTimer--;
+        if (scareTimer <= 0) monster.active = false;
+      }
+
+      // Exit
+      const tile = MAP[Math.floor(player.y/TILE)][Math.floor(player.x/TILE)];
+      if (tile === 'E') {
+        running = false;
+        statusEl.textContent = 'You escaped.';
+        overlay.style.display = 'flex';
+        overlay.querySelector('h1').textContent = 'Safe... for now';
+        overlay.querySelector('p').textContent = 'The corridor goes silent.';
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // Draw map
+      for (let y=0;y<MAP.length;y++) {
+        for (let x=0;x<MAP[y].length;x++) {
+          if (MAP[y][x] === '#') {
+            ctx.fillStyle = '#111';
+            ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
+          }
+          if (MAP[y][x] === 'E') {
+            ctx.fillStyle = '#222';
+            ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
+          }
+        }
+      }
+
+      // Player
+      ctx.fillStyle = '#888';
+      ctx.fillRect(player.x-6, player.y-6, 12, 12);
+
+      // Monster (subtle)
+      if (monster.active) {
+        ctx.fillStyle = 'rgba(180,0,0,.35)';
+        ctx.fillRect(monster.x-10, monster.y-10, 20, 20);
+      }
+
+      // Darkness / flashlight
+      ctx.fillStyle = 'rgba(0,0,0,0.92)';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      if (flashlight) {
+        const g = ctx.createRadialGradient(player.x, player.y, 20, player.x, player.y, 140);
+        g.addColorStop(0, 'rgba(0,0,0,0)');
+        g.addColorStop(1, 'rgba(0,0,0,0.92)');
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(player.x, player.y, 140, 0, Math.PI*2); ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+
+    function loop() { update(); draw(); requestAnimationFrame(loop); }
+
+    document.getElementById('start').onclick = () => {
+      overlay.style.display = 'none';
+      statusEl.textContent = 'Listen carefully.';
+      running = true;
+    };
+
+    loop();
+  </script>
+</body>
+</html>
